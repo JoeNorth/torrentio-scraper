@@ -16,6 +16,8 @@ const MESSAGE_VIDEO_URL_TTL = 60 * 1000; // 1 minutes
 
 const MONGO_URI = process.env.MONGODB_URI;
 
+const streamMemoryCache = new KeyvCacheableMemory({ lruSize: 15000 });
+const resolvedMemoryCache = new KeyvCacheableMemory({ lruSize: 20000 });
 const memoryCache = new KeyvCacheableMemory({ lruSize: 10000 });
 const mongoCache = MONGO_URI && new KeyvMongo(MONGO_URI, {
   collection: 'torrentio_addon_collection',
@@ -24,22 +26,22 @@ const mongoCache = MONGO_URI && new KeyvMongo(MONGO_URI, {
   maxConnecting: 5,
 });
 
-async function cacheWrap(key, method, ttl) {
+async function cacheWrap(key, method, ttl, memCache = memoryCache) {
     if (!mongoCache) {
         return method();
     }
-    let value = await memoryCache.get(key);
+    let value = await memCache.get(key);
     if (value !== undefined) {
         return value;
     }
     value = await mongoCache.get(key);
     if (value !== undefined) {
-        await cacheValue(memoryCache, key, value, ttl);
+        await cacheValue(memCache, key, value, ttl);
         return value;
     }
     const result = await method();
     await cacheValue(mongoCache, key, result, ttl);
-    await cacheValue(memoryCache, key, result, ttl);
+    await cacheValue(memCache, key, result, ttl);
     return result;
 }
 
@@ -49,13 +51,13 @@ async function cacheValue(cache, key, value, ttl) {
 }
 
 export function cacheWrapStream(id, method) {
-  const ttl = (streams, cache) => streams.length ? cache !== memoryCache ? STREAM_TTL : STREAM_MEM_TTL : STREAM_EMPTY_TTL;
-  return cacheWrap(`${STREAM_KEY_PREFIX}:${id}`, method, ttl);
+  const ttl = (streams, cache) => streams.length ? cache !== streamMemoryCache ? STREAM_TTL : STREAM_MEM_TTL : STREAM_EMPTY_TTL;
+  return cacheWrap(`${STREAM_KEY_PREFIX}:${id}`, method, ttl, streamMemoryCache);
 }
 
 export function cacheWrapResolvedUrl(id, method) {
   const ttl = (url) => isStaticUrl(url) ? MESSAGE_VIDEO_URL_TTL : RESOLVED_URL_TTL;
-  return cacheWrap(`${RESOLVED_URL_KEY_PREFIX}:${id}`, method, ttl);
+  return cacheWrap(`${RESOLVED_URL_KEY_PREFIX}:${id}`, method, ttl, resolvedMemoryCache);
 }
 
 export function cacheAvailabilityResults(infoHash, fileIds) {
