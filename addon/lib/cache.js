@@ -80,6 +80,26 @@ export function closeCache() {
   return mongoCache ? mongoCache.disconnect() : Promise.resolve();
 }
 
+const CACHE_SAMPLE = 20;
+const memCaches = { stream: streamMemoryCache, resolved: resolvedMemoryCache, memory: memoryCache };
+
+function sampleAvgBytes(store) {
+  let count = 0, bytes = 0;
+  for (const item of store.items) {
+    bytes += JSON.stringify(item.value)?.length || 0;
+    if (++count >= CACHE_SAMPLE) break;
+  }
+  return count ? bytes / count : 0;
+}
+
+export function cacheSizes() {
+  return Object.fromEntries(Object.entries(memCaches).map(([name, cache]) => {
+    const store = cache._defaultCache;
+    const entries = store?.size || 0;
+    return [name, { entries, bytes: Math.round(entries * sampleAvgBytes(store)) }];
+  }));
+}
+
 export function cacheWrapStream(id, method) {
   const ttl = (streams, cache) => streams.length ? cache !== streamMemoryCache ? STREAM_TTL : STREAM_MEM_TTL : STREAM_EMPTY_TTL;
   return cacheWrap('stream', `${STREAM_KEY_PREFIX}:${id}`, method, ttl, streamMemoryCache);

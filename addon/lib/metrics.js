@@ -2,6 +2,7 @@ import client from 'prom-client';
 import { performance } from 'node:perf_hooks';
 import { MochOptions, queueDepths, blacklistSize } from '../moch/moch.js';
 import { poolStats } from './repository.js';
+import { cacheSizes } from './cache.js';
 
 const register = new client.Registry();
 register.setDefaultLabels({ app: 'torrentio-addon' });
@@ -144,6 +145,26 @@ new client.Gauge({
   registers: [register],
   collect() {
     Object.entries(queueDepths()).forEach(([moch, depth]) => this.set({ moch }, depth));
+  }
+});
+
+new client.Gauge({
+  name: 'addon_cache_entries',
+  help: 'In-memory LRU cache entry count by cache',
+  labelNames: ['cache'],
+  registers: [register],
+  collect() {
+    Object.entries(cacheSizes()).forEach(([cache, s]) => this.set({ cache }, s.entries));
+  }
+});
+
+new client.Gauge({
+  name: 'addon_cache_bytes',
+  help: 'In-memory LRU cache size estimate (entries x sampled avg serialized bytes) by cache',
+  labelNames: ['cache'],
+  registers: [register],
+  collect() {
+    Object.entries(cacheSizes()).forEach(([cache, s]) => this.set({ cache }, s.bytes));
   }
 });
 
